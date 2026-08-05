@@ -1261,11 +1261,17 @@ void LiteRtCompiledModelT::CheckCpuTensors() {
                             litert::internal::kLiteRtDispatchOpCustomName)) {
         continue;
       }
-      // Mark input of node as CPU tensors.
+      // Mark inputs of node as CPU tensors.
       for (int i = 0; i < node.inputs->size; ++i) {
         int input_tensor_index = node.inputs->data[i];
         if (input_tensor_index == kTfLiteOptionalTensor) continue;
         cpu_tensors_.insert({subgraph_no, input_tensor_index});
+      }
+      // Mark outputs of node as CPU tensors.
+      for (int i = 0; i < node.outputs->size; ++i) {
+        int output_tensor_index = node.outputs->data[i];
+        if (output_tensor_index == kTfLiteOptionalTensor) continue;
+        cpu_tensors_.insert({subgraph_no, output_tensor_index});
       }
     }
   }
@@ -1762,6 +1768,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
                    "Tracked constant output tensor %s with locked address",
                    tensor_name);
       }
+      locked_buffers.push_back(buffer);
       TfLiteStatus status = kTfLiteOk;
       if (is_input) {
         if (runner) {
@@ -1778,7 +1785,6 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
                      "Failed to set custom allocation for input tensor %s "
                      "(index %d): %d",
                      tensor_name ? tensor_name : "", tensor_index, status);
-          LiteRtUnlockTensorBuffer(buffer);
           return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                             "Failed to set custom allocation for input");
         }
@@ -1788,12 +1794,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
         if (tensor->type == kTfLiteString) {
           tensor->bytes = buffer->buffer_size();
         }
-
-        // TODO: b/419350199 - Ad-hoc solution to unlock input buffers.
-        LITERT_RETURN_IF_ERROR(LiteRtUnlockTensorBuffer(buffer));
       } else {
-        locked_buffers.push_back(buffer);
-
         // Skip SetCustomAllocationForOutputTensor for constant tensors
         // TFLite doesn't allow custom allocation for read-only memory-mapped
         // tensors
@@ -1827,8 +1828,10 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
                           GetTensorIdentifier(*interp_, tensor));
   if (cpu_tensors_.find(tensor_id) != cpu_tensors_.end()) {
     void* host_mem_addr;
-    if (auto status = LiteRtLockTensorBuffer(
-            buffer, &host_mem_addr, kLiteRtTensorBufferLockModeReadWrite);
+    LiteRtTensorBufferLockMode lock_mode =
+        is_input ? kLiteRtTensorBufferLockModeRead
+                 : kLiteRtTensorBufferLockModeWrite;
+    if (auto status = LiteRtLockTensorBuffer(buffer, &host_mem_addr, lock_mode);
         status != kLiteRtStatusOk) {
       return Unexpected(
           status, absl::StrFormat("Failed to lock the tensor buffer: %s",
@@ -1845,6 +1848,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
     }
     TfLiteCustomAllocation custom_allocation{host_mem_addr,
                                              buffer->buffer_size()};
+    locked_buffers.push_back(buffer);
     if (is_input) {
       if (runner) {
         runner->SetCustomAllocationForInputTensor(tensor_name,
