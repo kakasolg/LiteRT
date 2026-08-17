@@ -521,7 +521,6 @@ cc_library(
         ":types",
         "//tflite:macros",
         "//tflite/core/c:common",
-        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -646,7 +645,6 @@ cc_library(
         "//tflite/kernels:kernel_util",
         "//tflite/kernels:op_macros",
         "//tflite/kernels/internal/utils:sparsity_format_converter",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
@@ -747,7 +745,7 @@ cc_library(
         "//tflite/core/c:common",
         "//tflite/kernels:op_macros",
         "//tflite/kernels/internal/utils:sparsity_format_converter",
-        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
