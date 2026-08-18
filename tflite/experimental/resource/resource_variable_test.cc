@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tflite/core/c/c_api_types.h"
 #include "tflite/core/c/common.h"
+#include "tflite/experimental/resource/resource_base.h"
 #include "tflite/kernels/test_util.h"
 #include "tflite/util.h"
 
@@ -216,6 +218,48 @@ TEST(ResourceTest, GetMemoryUsage) {
   // For non dynamic tensors we need to delete the buffers manually.
   free(tensor.data.raw);
   TfLiteTensorFree(&tensor);
+}
+
+class DummyHashTableResource : public ResourceBase {
+ public:
+  ResourceType GetResourceType() const override {
+    return ResourceType::kHashTable;
+  }
+  bool IsInitialized() override { return true; }
+};
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_CreatesNew) {
+  ResourceMap resources;
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  ASSERT_EQ(resources.size(), 1);
+  EXPECT_NE(resources.find(1), resources.end());
+  EXPECT_EQ(resources[1]->GetResourceType(),
+            ResourceBase::ResourceType::kResourceVariable);
+}
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_ExistingMatchingType) {
+  ResourceMap resources;
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  EXPECT_EQ(kTfLiteOk, CreateResourceVariableIfNotAvailable(&resources,
+                                                            /*resource_id=*/1));
+  ASSERT_EQ(resources.size(), 1);
+}
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_TypeMismatch) {
+  ResourceMap resources;
+  resources[1] = std::make_unique<DummyHashTableResource>();
+  EXPECT_EQ(kTfLiteError, CreateResourceVariableIfNotAvailable(
+                              &resources, /*resource_id=*/1));
+}
+
+TEST(ResourceTest, CreateResourceVariableIfNotAvailable_NullEntry) {
+  ResourceMap resources;
+  resources[1] = nullptr;
+  EXPECT_EQ(kTfLiteError, CreateResourceVariableIfNotAvailable(
+                              &resources, /*resource_id=*/1));
+  EXPECT_EQ(GetResourceVariable(&resources, /*resource_id=*/1), nullptr);
 }
 
 }  // namespace resource

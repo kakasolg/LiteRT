@@ -101,20 +101,29 @@ LookupInterface* CreateStaticHashtable(TfLiteType key_type,
 
 }  // namespace internal
 
-void CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
-                                           int resource_id,
-                                           TfLiteType key_dtype,
-                                           TfLiteType value_dtype) {
-  if (resources->count(resource_id) != 0) {
-    return;
+TfLiteStatus CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
+                                                   int resource_id,
+                                                   TfLiteType key_dtype,
+                                                   TfLiteType value_dtype) {
+  auto it = resources->find(resource_id);
+  if (it != resources->end()) {
+    if (it->second == nullptr || it->second->GetResourceType() !=
+                                     ResourceBase::ResourceType::kHashTable) {
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
   }
   auto* hashtable = internal::CreateStaticHashtable(key_dtype, value_dtype);
+  if (hashtable == nullptr) {
+    return kTfLiteError;
+  }
   resources->emplace(resource_id, std::unique_ptr<LookupInterface>(hashtable));
+  return kTfLiteOk;
 }
 
 LookupInterface* GetHashtableResource(ResourceMap* resources, int resource_id) {
   auto it = resources->find(resource_id);
-  if (it != resources->end() &&
+  if (it != resources->end() && it->second != nullptr &&
       it->second->GetResourceType() == ResourceBase::ResourceType::kHashTable) {
     return static_cast<LookupInterface*>(it->second.get());
   }
